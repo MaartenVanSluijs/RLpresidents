@@ -10,6 +10,8 @@ def print_complete_state(game: Game):
             print(f"{player.cards} --> turn to play")
         elif player.has_passed:
             print(f"{player.cards} [passed]")
+        elif player.done:
+            print(f"{player.cards} [done]")
         else:
             print(player.cards)
     print("--------------------------------------")
@@ -47,10 +49,11 @@ def main():
 
         input_list = [int(card) for card in action.split(",")]
         
-        game.play(input_to_action(input_list, current_hand))
+        _, _, terminated = game.play(input_to_action(input_list, current_hand))
+
+        if terminated:
+            print("Game over, resetting...")
         
-        # print_complete_state(game)
-
-
+        
 if __name__ == "__main__":
     main()

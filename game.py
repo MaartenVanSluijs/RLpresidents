@@ -13,6 +13,8 @@ Class that runs the game, needs to initialize the game, handle plays, and resets
     The game is done when only one player remaining has one or more cards.
 """
 
+# TODO: fix functionality of playing a 2, they don't function on their own
+
 # TODO: refactor players with player indices in their class
 # TODO: the next observation returned to an agent should be its own hand, now it is the hand of the next person
 # TODO: make a nice interface for the player to play the game
@@ -28,6 +30,7 @@ class Game:
     def shuffle(self):
         cards = [2,3,4,5,6,7,8,9,10,11,12,13,14]*4
         for player in self.players:
+            player.cards = []
             for _ in range(10):
                 card = random.choice(cards)
                 player.cards.append(card)
@@ -36,6 +39,7 @@ class Game:
 
     def reset(self):
         self.shuffle()
+        self.reset_done()
         self.play_size = 0
         self.high_card = 0
         self.current_player = random.randint( 0, len(self.players)-1)
@@ -52,16 +56,17 @@ class Game:
         if not self.validate_action(played_cards):
 
             # Handle game dynamics on passing
-            self.current_player, next_hand = self.pass_turn()
-                        
+            self.current_player, next_hand = self.pass_turn()                        
             return -1, {"high_card": self.high_card, "play_size": self.play_size, "hand": next_hand}, False
 
-        # Play the cards, update the high card check if 10s are played or not
         self.players[self.current_player].remove_cards(played_cards)
+
+        # Play the cards, update the high card check if 10s are played or not
         if played_cards in [[10], [10, 10], [10, 10, 10], [10, 10, 10, 10]]:
             self.high_card = 0
             self.play_size = 0
 
+            self.reset_passes()
             next_hand = self.players[self.current_player].cards
             
         else:
@@ -72,7 +77,7 @@ class Game:
 
         # If done, check if game is over
         if self.game_over():
-            new_observation = self.reset()
+            new_observation, _ = self.reset()
             return 1, new_observation, True
 
         return 1, {"high_card": self.high_card, "play_size": self.play_size, "hand": next_hand}, False
@@ -120,8 +125,8 @@ class Game:
 
         # If last pass, previous player wins
         # Else move on to a next player
-        number_passed = sum([player.has_passed for player in self.players])
-        if number_passed == len(self.players) - 1:
+        players_left = len(self.players) - sum([player.has_passed or player.done for player in self.players])
+        if players_left == 1:
             self.high_card = 0
             self.play_size = 0
             next_player, next_hand = self.find_winner_and_hand()
@@ -130,39 +135,51 @@ class Game:
             next_player, next_hand = self.next_player_and_hand()
         return next_player, next_hand
 
-    # Function for finding the winner of a round if all other players have passed
+    # Function for finding the winner of a round if all other players have passed or are done
     def find_winner_and_hand(self):
         for index, player in enumerate(self.players):
-            if not player.has_passed:
+            if not player.has_passed and not player.done:
                 return index, self.players[index].cards
 
     # Function for finding the next eligible player if the round is not over yet
     def next_player_and_hand(self):
+        # Visit next players one by one
         for offset in range(1, len(self.players)):
-            next_player = (self.current_player + offset) % len(self.players)
-            if not self.players[next_player].has_passed and len(self.players[next_player].cards) != 0:
-                return next_player, self.players[next_player].cards
+            next_player_index = (self.current_player + offset) % len(self.players)
+            next_player = self.players[next_player_index]
+
+            # If next player has not passed and is not done
+            if not next_player.has_passed and not next_player.done:
+                return next_player_index, next_player.cards
 
     # Function to check if the game is over, i.e. only one player has cards left
     def game_over(self):
-        count = 0
+        remaining_players = 0
         for player in self.players:
-            if player.cards != []:
-                count += 1
-        return True if count <= 1 else False
+            if not player.done:
+                remaining_players += 1
+        return True if remaining_players <= 1 else False
 
     # Function to reset each players' pass tag
     def reset_passes(self):
         for player in self.players:
             player.has_passed = False
 
+    # Function to reset each players' done tag
+    def reset_done(self):
+        for player in self.players:
+            player.done = False
 
 class Player:
 
     def __init__(self):
         self.cards = []
         self.has_passed = False
+        self.done = False
         pass
 
     def remove_cards(self, played_cards):
         self.cards = list((Counter(self.cards) - Counter(played_cards)).elements())
+        if self.cards == []:
+            self.done = True
+        
